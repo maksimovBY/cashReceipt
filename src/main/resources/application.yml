@@ -1,3 +1,6 @@
 promotional:
   min-quantity-to-apply-discount: 6
   discount-percentage: 10
+
+export:
+  destination-folder-path: D:\temp\receipt-export
