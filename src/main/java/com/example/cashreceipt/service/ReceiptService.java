@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.springframework.util.StringUtils.hasText;
 
@@ -30,6 +31,8 @@ public class ReceiptService {
 
     private static final AtomicLong NEXT_CHECK_ID = new AtomicLong(1);
 
+    public static final String DISCOUNT_CARD_KEYWORD_PREFIX = "card-";
+
     public static final Map<Long, Product> AVAILABLE_PRODUCTS = Map.of(
             1L, Product.builder().id(1).description("Product 1").price(1.2).promotional(false).build(),
             2L, Product.builder().id(2).description("Product 2").price(2).promotional(true).build(),
@@ -37,7 +40,6 @@ public class ReceiptService {
             4L, Product.builder().id(4).description("Product 4").price(0.17).promotional(true).build(),
             5L, Product.builder().id(5).description("Product 5").price(35.99).promotional(false).build()
     );
-
 
     public static final Map<Long, DiscountCard> REGISTERED_DISCOUNT_CARDS = Map.of(
             1L, DiscountCard.builder().id(1).customerName("Customer name 1").discountPercentage(1).build(),
@@ -110,10 +112,10 @@ public class ReceiptService {
 
         double receiptTotalPriceWithoutDiscount = receipt.getRows().stream()
                 .map(receiptRow -> {
-               if(receiptRow.getRowTotalPriceWithDiscount() != null) {
-                   return receiptRow.getRowTotalPriceWithDiscount();
-               }
-               return receiptRow.getRowTotalPrice();
+                    if (receiptRow.getRowTotalPriceWithDiscount() != null) {
+                        return receiptRow.getRowTotalPriceWithDiscount();
+                    }
+                    return receiptRow.getRowTotalPrice();
                 })
                 .reduce(0.0, Double::sum);
         receipt.setTotalPriceWithoutDiscount(receiptTotalPriceWithoutDiscount);
@@ -146,4 +148,63 @@ public class ReceiptService {
                 });
 
     }
+
+    public String getValidationErrorMessage(String[] args) {
+
+        if (args == null || args.length == 0) {
+            return "Can't print receipt. Because no input arguments.";
+        }
+        if (!validateProductsQuantityArgs(args)) {
+            return "Can't print receipt. Wrong input products-quantity arguments format.";
+        }
+        if (!validateDiscountCardArg(args)) {
+            return "Can't print receipt. Invalid discount card arguments.";
+        }
+        return "";
+    }
+
+    private boolean validateProductsQuantityArgs(String[] args) {
+        return Stream.of(args)
+                .map(String::trim)
+                .filter(arg -> !arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
+                .allMatch(arg -> arg.matches("\\d+-\\d+"));
+    }
+
+    private boolean validateDiscountCardArg(String[] args) {
+        long discountCardArgsCount = Stream.of(args)
+                .map(String::trim)
+                .filter(arg -> arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
+                .count();
+        if (discountCardArgsCount > 1) {
+            return false;
+        }
+        return Stream.of(args)
+                .map(String::trim)
+                .filter(arg -> arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
+                .allMatch(arg -> arg.matches(DISCOUNT_CARD_KEYWORD_PREFIX + "\\d+"));
+    }
+
+    public Receipt createReceiptFromParams(String cashierName, String[] args) {
+        Receipt receipt = openReceipt(cashierName);
+        Stream.of(args)
+                .map(String::trim)
+                .filter(arg -> !arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
+                .map(arg -> arg.split("-"))
+                .forEach(productQuantityPair -> {
+                    addPositionToReceipt(receipt,
+                            Long.parseLong(productQuantityPair[0]),
+                            Integer.parseInt(productQuantityPair[1]));
+                });
+
+        Stream.of(args)
+                .map(String::trim)
+                .filter(arg -> arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
+                .findFirst()
+                .map(arg -> arg.split("-")[1])
+                .ifPresent(cardId -> {
+                    applyDiscountCardToReceipt(receipt, Long.parseLong(cardId));
+                });
+        return receipt;
+    }
+
 }

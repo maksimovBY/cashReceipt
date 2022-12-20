@@ -256,4 +256,53 @@ class ReceiptServiceTest {
         assertEquals(receipt.getTotalPrice() + receipt.getDiscountAmount(), receipt.getTotalPriceWithoutDiscount(), DELTA);
         assertEquals(5, receipt.getRows().stream().map(ReceiptRow::getQuantity).reduce(Integer::sum).orElseThrow());
     }
+
+    @Test
+    void validReceiptParams() {
+        String[] args = {" 1-1", "2-2 ", "3-3"};
+        String validationErrorMessage = receiptService.getValidationErrorMessage(args);
+        assertTrue(validationErrorMessage.isEmpty());
+    }
+
+    @Test
+    void invalidReceiptProductsQuantityParamsExtraSpace() {
+        String[] args = {" 1-1", "2-2 ", "3 -3"};
+        String validationErrorMessage = receiptService.getValidationErrorMessage(args);
+        assertFalse(validationErrorMessage.isEmpty());
+    }
+
+    @Test
+    void invalidReceiptProductsQuantityParamsExtraHyphen() {
+        String[] args = {" 1-1", "2-2 ", "3-3-3"};
+        String validationErrorMessage = receiptService.getValidationErrorMessage(args);
+        assertFalse(validationErrorMessage.isEmpty());
+    }
+
+    @Test
+    void createReceiptFromParamsOk(){
+        String cashierName = "someCashierName";
+        long p1Id = 1L;
+        Product p1 = AVAILABLE_PRODUCTS.get(p1Id);
+        int p1Qnt = 2;
+        long p2Id = 2L;
+        Product p2 = AVAILABLE_PRODUCTS.get(p2Id);
+        int p2Qnt = 3;
+        DiscountCard card = REGISTERED_DISCOUNT_CARDS.entrySet().stream()
+                .findAny()
+                .map(Map.Entry::getValue)
+                .orElseThrow();
+
+        String[] args = {p1Id + "-" + p1Qnt, "card-" + card.getId(), p2Id + "-" + p2Qnt};
+
+        Receipt receipt = receiptService.createReceiptFromParams(cashierName, args);
+
+        assertEquals(cashierName, receipt.getCashierName());
+        assertEquals(2, receipt.getRows().size());
+        assertEquals(p1.getPrice() * p1Qnt + p2.getPrice() * p2Qnt, receipt.getTotalPriceWithoutDiscount(), DELTA);
+        assertEquals((p1.getPrice() * p1Qnt + p2.getPrice() * p2Qnt) * (1.0 - card.getDiscountPercentage() / 100.0),
+                receipt.getTotalPrice(), DELTA);
+        assertEquals(receipt.getTotalPrice() + receipt.getDiscountAmount(), receipt.getTotalPriceWithoutDiscount(), DELTA);
+        assertEquals(5, receipt.getRows().stream().map(ReceiptRow::getQuantity).reduce(Integer::sum).orElseThrow());
+
+    }
 }
