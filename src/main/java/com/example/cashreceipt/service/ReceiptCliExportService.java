@@ -54,7 +54,7 @@ public class ReceiptCliExportService {
                 builder.append("\n")
                         .append("\t\t\t")
                         .append(" with promotional discount: ")
-                        .append(row.getRowTotalPriceWithDiscount());
+                        .append(DF.format(row.getRowTotalPriceWithDiscount()));
             }
             builder.append("\n");
         }
