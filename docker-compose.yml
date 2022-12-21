@@ -1,0 +1,12 @@
+version: '2'
+
+services:
+  cashReceipt:
+    container_name: cashReceiptDb
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cashReceipt
+      - POSTGRES_USER=cashReceiptUser
+      - POSTGRES_PASSWORD=cashReceiptPassword

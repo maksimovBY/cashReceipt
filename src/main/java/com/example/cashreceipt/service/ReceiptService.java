@@ -5,6 +5,11 @@ import com.example.cashreceipt.dto.Product;
 import com.example.cashreceipt.dto.Receipt;
 import com.example.cashreceipt.dto.ReceiptRow;
 import com.example.cashreceipt.exception.ReceiptException;
+import com.example.cashreceipt.mapper.DiscountCardMapper;
+import com.example.cashreceipt.mapper.ProductMapper;
+import com.example.cashreceipt.reposotory.DiscountCardRepository;
+import com.example.cashreceipt.reposotory.ProductRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +24,7 @@ import java.util.stream.Stream;
 
 import static org.springframework.util.StringUtils.hasText;
 
-
+@RequiredArgsConstructor
 @Service
 public class ReceiptService {
 
@@ -29,7 +34,7 @@ public class ReceiptService {
     @Value("${promotional.discount-percentage}")
     private double discountPercentage;
 
-    private static final AtomicLong NEXT_CHECK_ID = new AtomicLong(1);
+    private static final AtomicLong NEXT_RECEIPT_ID = new AtomicLong(1);
 
     public static final String DISCOUNT_CARD_KEYWORD_PREFIX = "card-";
 
@@ -49,13 +54,18 @@ public class ReceiptService {
             5L, DiscountCard.builder().id(5).customerName("Customer name 5").discountPercentage(5).build()
     );
 
+    private final ProductRepository productRepository;
+    private final DiscountCardRepository discountCardRepository;
+    private final ProductMapper productMapper;
+    private final DiscountCardMapper discountCardMapper;
+
     public Receipt openReceipt(String cashierName) {
         if (!hasText(cashierName)) {
             throw new ReceiptException("Cashier name can't be blank.");
         }
 
         return Receipt.builder()
-                .id(NEXT_CHECK_ID.getAndIncrement())
+                .id(NEXT_RECEIPT_ID.getAndIncrement())
                 .cashierName(cashierName)
                 .date(LocalDate.now())
                 .time(LocalTime.now())
@@ -65,10 +75,10 @@ public class ReceiptService {
 
     public void addPositionToReceipt(Receipt receipt, long productId, int productQuantity) {
         if (receipt == null) {
-            throw new ReceiptException("Check can't be null");
+            throw new ReceiptException("Receipt can't be null");
         }
 
-        if (!AVAILABLE_PRODUCTS.containsKey(productId)) {
+        if (!productRepository.existsById(productId)) {
             throw new ReceiptException("Product with id: %s is not available".formatted(productId));
         }
 
@@ -76,7 +86,7 @@ public class ReceiptService {
             throw new ReceiptException("Product quantity in position must be greater then 0");
         }
 
-        Product product = AVAILABLE_PRODUCTS.get(productId);
+        Product product = productMapper.toDto(productRepository.findById(productId).orElse(null));
 
         ReceiptRow receiptRow = ReceiptRow.builder()
                 .product(product)
@@ -98,11 +108,11 @@ public class ReceiptService {
             throw new ReceiptException("Check can't be null");
         }
 
-        if (!REGISTERED_DISCOUNT_CARDS.containsKey(cardId)) {
+        if (!discountCardRepository.existsById(cardId)) {
             throw new ReceiptException("Card with id: %s is not registered".formatted(cardId));
         }
 
-        receipt.setDiscountCard(REGISTERED_DISCOUNT_CARDS.get(cardId));
+        receipt.setDiscountCard(discountCardMapper.toDto(discountCardRepository.findById(cardId).orElse(null)));
 
         recalculateReceiptPrice(receipt);
     }
@@ -190,20 +200,16 @@ public class ReceiptService {
                 .map(String::trim)
                 .filter(arg -> !arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
                 .map(arg -> arg.split("-"))
-                .forEach(productQuantityPair -> {
-                    addPositionToReceipt(receipt,
-                            Long.parseLong(productQuantityPair[0]),
-                            Integer.parseInt(productQuantityPair[1]));
-                });
+                .forEach(productQuantityPair -> addPositionToReceipt(receipt,
+                        Long.parseLong(productQuantityPair[0]),
+                        Integer.parseInt(productQuantityPair[1])));
 
         Stream.of(args)
                 .map(String::trim)
                 .filter(arg -> arg.startsWith(DISCOUNT_CARD_KEYWORD_PREFIX))
                 .findFirst()
                 .map(arg -> arg.split("-")[1])
-                .ifPresent(cardId -> {
-                    applyDiscountCardToReceipt(receipt, Long.parseLong(cardId));
-                });
+                .ifPresent(cardId -> applyDiscountCardToReceipt(receipt, Long.parseLong(cardId)));
         return receipt;
     }
 
